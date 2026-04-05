@@ -10,6 +10,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import {
   User,
   RefreshToken,
+  PasswordResetToken,
   Course,
   Slot,
   Booking,
@@ -21,7 +22,7 @@ import {
     TypeOrmModule.forRoot({
       type: 'sqlite',
       database: 'data/database.sqlite',
-      entities: [User, RefreshToken, Course, Slot, Booking],
+      entities: [User, RefreshToken, PasswordResetToken, Course, Slot, Booking],
       synchronize: false,
     }),
     AuthModule,

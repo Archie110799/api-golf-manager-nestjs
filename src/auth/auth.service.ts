@@ -7,14 +7,19 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../entities/user.entity';
 import { RefreshToken } from '../entities/refresh-token.entity';
+import { PasswordResetToken } from '../entities/password-reset-token.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
+const PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 30;
 
 @Injectable()
 export class AuthService {
@@ -23,6 +28,8 @@ export class AuthService {
     private userRepo: Repository<User>,
     @InjectRepository(RefreshToken)
     private refreshTokenRepo: Repository<RefreshToken>,
+    @InjectRepository(PasswordResetToken)
+    private passwordResetTokenRepo: Repository<PasswordResetToken>,
     private jwtService: JwtService,
   ) {}
 
@@ -79,13 +86,57 @@ export class AuthService {
     };
   }
 
-  async forgotPassword(email: string) {
-    // No-op for now; could send email later
-    const user = await this.userRepo.findOne({ where: { email } });
-    if (user) {
-      // TODO: send reset link
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.userRepo.findOne({ where: { email: dto.email } });
+    if (!user) {
+      return {
+        message: 'Nếu email tồn tại, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.',
+      };
     }
-    return { message: 'Nếu email tồn tại, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.' };
+
+    await this.passwordResetTokenRepo.delete({ userId: user.id });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + PASSWORD_RESET_TOKEN_EXPIRY_MINUTES);
+
+    const resetToken = this.passwordResetTokenRepo.create({
+      id: uuidv4(),
+      userId: user.id,
+      tokenHash,
+      expiresAt,
+      usedAt: null,
+    });
+
+    await this.passwordResetTokenRepo.save(resetToken);
+
+    return {
+      message: 'Nếu email tồn tại, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.',
+      resetToken: rawToken,
+      expiresAt,
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const tokenHash = crypto.createHash('sha256').update(dto.token).digest('hex');
+    const resetToken = await this.passwordResetTokenRepo.findOne({
+      where: { tokenHash },
+      relations: ['user'],
+    });
+
+    if (!resetToken || resetToken.usedAt || new Date() > resetToken.expiresAt) {
+      throw new UnauthorizedException('Token đặt lại mật khẩu không hợp lệ hoặc đã hết hạn');
+    }
+
+    resetToken.usedAt = new Date();
+    resetToken.user.passwordHash = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.userRepo.save(resetToken.user);
+    await this.passwordResetTokenRepo.save(resetToken);
+    await this.refreshTokenRepo.delete({ userId: resetToken.user.id });
+
+    return { message: 'Đặt lại mật khẩu thành công' };
   }
 
   async refresh(refreshTokenValue: string) {

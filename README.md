@@ -41,7 +41,8 @@ API chạy tại **http://localhost:3000**.
 |--------|----------|--------|
 | POST | `/auth/login` | Đăng nhập (body: email, password) |
 | POST | `/auth/register` | Đăng ký (body: email, password, fullName, phone?) |
-| POST | `/auth/forgot-password` | Quên mật khẩu (body: email) |
+| POST | `/auth/forgot-password` | Quên mật khẩu (body: email, trả về resetToken để dùng khi chưa có email service) |
+| POST | `/auth/reset-password` | Đặt lại mật khẩu (body: token, newPassword) |
 | POST | `/auth/refresh` | Đổi access token (body: refreshToken) |
 | GET | `/courses` | Danh sách sân (public) |
 | GET | `/courses/:courseId/slots` | Lấy slot theo sân (?date=YYYY-MM-DD) |
